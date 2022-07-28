@@ -69,3 +69,5 @@ ALLOW_EXTERNAL_UPLOAD_DIR = getattr(settings,
                                     False)
 # Optional permissions settings for each endpoint.
 PERMISSION_CLASSES = getattr(settings, _app_prefix+'PERMISSION_CLASSES', {})
+
+THUMBNAIL_SIZES = getattr(settings, _app_prefix+'THUMBNAIL_SIZES', {})
