@@ -62,6 +62,11 @@ def _get_content_type(data, temporary=True):
     return mimetypes.guess_type(data)[0]
 
 
+def is_image(file_name):
+    content_type = mimetypes.guess_type(file_name)[0]
+    return content_type and content_type.startswith('image/')
+
+
 def _import_permission_classes(endpoint):
     """
     Iterates over array of string representations of permission classes from
@@ -238,9 +243,10 @@ class LoadView(APIView):
                       % (upload_id, str(e)))
             return Response('Not found', status=status.HTTP_404_NOT_FOUND)
 
+        thumbnail_type = request.GET.get('thumbnail', None) if is_image(su.file.name) else None
         # su is now the StoredUpload record for the requested file
         try:
-            (filename, data_bytes) = get_stored_upload_file_data(su)
+            (filename, data_bytes) = get_stored_upload_file_data(su, thumbnail_type)
         except ConfigurationError as e:
             LOG.error('Error getting file upload: [%s]' % str(e))
             return HttpResponseServerError('The file upload settings are '
@@ -253,8 +259,10 @@ class LoadView(APIView):
         ct = _get_content_type(filename)
 
         response = HttpResponse(data_bytes, content_type=ct)
-        response['Content-Disposition'] = ('inline; filename="%s"' %
-                                           escape_uri_path(filename))
+        is_download = request.GET.get('is-download', 'false')
+        content_disponsition = 'attachement' if is_download == 'true' else 'inline'
+        response['Content-Disposition'] = ('%s; filename="%s"' %
+                                           (content_disponsition, escape_uri_path(filename)))
 
         return response
 
