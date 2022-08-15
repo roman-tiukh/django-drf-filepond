@@ -18,6 +18,7 @@ import shortuuid
 from django_drf_filepond.models import TemporaryUpload, StoredUpload
 from django_drf_filepond.storage_utils import _get_storage_backend
 from django_drf_filepond.exceptions import ConfigurationError
+from django_drf_filepond.utils import is_image_for_thumbnail
 from sorl.thumbnail import get_thumbnail
 
 # TODO: Need to refactor this into a class and put the initialisation of
@@ -306,7 +307,7 @@ def get_stored_upload_file_data(stored_upload, thumbnail_type):
         # We now know that the file exists locally and is not a directory
 
     filename = os.path.basename(stored_upload.file.name)
-    if is_image(filename) and thumbnail_type and local_settings.THUMBNAIL_SIZES:
+    if is_image_for_thumbnail(filename) and thumbnail_type and local_settings.THUMBNAIL_SIZES:
         thumbnail_config = local_settings.THUMBNAIL_SIZES.get(thumbnail_type, None)
         if not thumbnail_config:
             LOG.error(f'Unknown thumbnail size type [{thumbnail_type}] - falling back to default. ' +

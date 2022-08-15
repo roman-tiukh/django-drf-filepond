@@ -3,6 +3,7 @@ import django_drf_filepond.drf_filepond_settings as local_settings
 from django.contrib.auth.models import AnonymousUser
 import shortuuid
 import six
+import mimetypes
 
 
 # Get the user associated with the provided request. If we have an anonymous
@@ -43,3 +44,8 @@ def _process_base_dir(base_dir):
     if isinstance(base_dir, Path):
         return str(base_dir)
     return base_dir
+
+
+def is_image_for_thumbnail(file_name):
+    content_type = mimetypes.guess_type(file_name)[0]
+    return content_type and content_type.startswith('image/') and not content_type.startswith('image/svg')

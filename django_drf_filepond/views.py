@@ -31,7 +31,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_drf_filepond.uploaders import FilepondFileUploader
 from django_drf_filepond.utils import _get_file_id, _get_user,\
-    get_local_settings_base_dir
+    get_local_settings_base_dir, is_image_for_thumbnail
 from django.utils.encoding import escape_uri_path
 
 LOG = logging.getLogger(__name__)
@@ -60,11 +60,6 @@ except NameError:
 # 'data' will be the header data from the file to enable file type detection.
 def _get_content_type(data, temporary=True):
     return mimetypes.guess_type(data)[0]
-
-
-def is_image(file_name):
-    content_type = mimetypes.guess_type(file_name)[0]
-    return content_type and content_type.startswith('image/') and not content_type.startswith('image/svg')
 
 
 def _import_permission_classes(endpoint):
@@ -243,7 +238,7 @@ class LoadView(APIView):
                       % (upload_id, str(e)))
             return Response('Not found', status=status.HTTP_404_NOT_FOUND)
 
-        thumbnail_type = request.GET.get('thumbnail', None) if is_image(su.file.name) else None
+        thumbnail_type = request.GET.get('thumbnail', None) if is_image_for_thumbnail(su.file.name) else None
         # su is now the StoredUpload record for the requested file
         try:
             (filename, data_bytes) = get_stored_upload_file_data(su, thumbnail_type)
