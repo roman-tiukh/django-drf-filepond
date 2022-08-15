@@ -64,7 +64,7 @@ def _get_content_type(data, temporary=True):
 
 def is_image(file_name):
     content_type = mimetypes.guess_type(file_name)[0]
-    return content_type and content_type.startswith('image/') and content_type != 'image/svg'
+    return content_type and content_type.startswith('image/') and not content_type.startswith('image/svg')
 
 
 def _import_permission_classes(endpoint):
