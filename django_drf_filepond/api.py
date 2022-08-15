@@ -306,8 +306,8 @@ def get_stored_upload_file_data(stored_upload, thumbnail_type):
         # We now know that the file exists locally and is not a directory
 
     filename = os.path.basename(stored_upload.file.name)
-    if thumbnail_type and local_settings.THUMBNAIL_SIZES:
-        thumbnail_config =  local_settings.THUMBNAIL_SIZES.get(thumbnail_type, None)
+    if is_image(filename) and thumbnail_type and local_settings.THUMBNAIL_SIZES:
+        thumbnail_config = local_settings.THUMBNAIL_SIZES.get(thumbnail_type, None)
         if not thumbnail_config:
             LOG.error(f'Unknown thumbnail size type [{thumbnail_type}] - falling back to default. ' +
                 'Set thumbnail config via DJANGO_DRF_FILEPOND_THUMBNAIL_SIZES setting key.')
@@ -316,7 +316,7 @@ def get_stored_upload_file_data(stored_upload, thumbnail_type):
         if not thumbnailed_solr.exists():
             LOG.error(f'Failed to produce a thumbnail [{thumbnail_type}] with config [{thumbnail_config}].')
             # returning empty file so on UI it will appear with download button
-            return (filename, bytearray())  
+            return (filename, bytearray())
         return (filename, thumbnailed_solr.read())
     return (filename, stored_upload.file.read())
 
