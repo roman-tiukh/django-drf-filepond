@@ -317,7 +317,7 @@ def get_stored_upload_file_data(stored_upload, thumbnail_type):
         if not thumbnailed_solr.exists():
             LOG.error(f'Failed to produce a thumbnail [{thumbnail_type}] with config [{thumbnail_config}].')
             # returning empty file so on UI it will appear with download button
-            return (filename, bytearray())
+            return (filename, stored_upload.file.read())
         return (filename, thumbnailed_solr.read())
     return (filename, stored_upload.file.read())
 

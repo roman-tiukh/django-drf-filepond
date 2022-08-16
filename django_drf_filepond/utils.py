@@ -48,4 +48,9 @@ def _process_base_dir(base_dir):
 
 def is_image_for_thumbnail(file_name):
     content_type = mimetypes.guess_type(file_name)[0]
-    return content_type and content_type.startswith('image/') and not content_type.startswith('image/svg')
+    return (
+            content_type and
+            content_type.startswith('image/') and
+            not content_type.startswith('image/svg') and
+            content_type != 'image/heic'
+    )
