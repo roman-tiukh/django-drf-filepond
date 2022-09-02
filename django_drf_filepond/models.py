@@ -15,6 +15,7 @@ from django.utils.deconstruct import deconstructible
 import django_drf_filepond.drf_filepond_settings as local_settings
 from django.utils.functional import LazyObject
 from django_drf_filepond.storage_utils import _get_storage_backend
+from django_drf_filepond.s3_move_uploader import S3MoveStorage
 
 
 LOG = logging.getLogger(__name__)
@@ -53,10 +54,6 @@ class FilePondUploadSystemStorage(FileSystemStorage):
         })
         super(FilePondUploadSystemStorage, self).__init__(**kwargs)
 
-
-storage = FilePondUploadSystemStorage()
-
-
 @deconstructible
 class FilePondLocalStoredStorage(FileSystemStorage):
     """
@@ -92,6 +89,10 @@ class DrfFilePondStoredStorage(LazyObject):
             self._wrapped = storage_backend
 
 
+chunked_storage = FilePondUploadSystemStorage()
+temp_storage = DrfFilePondStoredStorage()
+
+
 def get_upload_path(instance, filename):
     return os.path.join(instance.upload_id, filename)
 
@@ -112,7 +113,9 @@ class TemporaryUpload(models.Model):
     # The unique ID used to store the file itself
     file_id = models.CharField(max_length=22,
                                validators=[MinLengthValidator(22)])
-    file = models.FileField(storage=storage, upload_to=get_upload_path)
+    file = models.FileField(
+        storage=temp_storage,
+        upload_to=get_upload_path)
     upload_name = models.CharField(max_length=512)
     uploaded = models.DateTimeField(auto_now_add=True)
     upload_type = models.CharField(max_length=1,
@@ -154,7 +157,7 @@ class StoredUpload(models.Model):
                                  validators=[MinLengthValidator(22)])
     # The file name and path (relative to the base file store directory
     # as set by DJANGO_DRF_FILEPOND_FILE_STORE_PATH).
-    file = models.FileField(storage=DrfFilePondStoredStorage(),
+    file = models.FileField(storage=S3MoveStorage(),
                             max_length=2048)
     uploaded = models.DateTimeField()
     stored = models.DateTimeField(auto_now_add=True)
@@ -176,12 +179,12 @@ def delete_temp_upload_file(sender, instance, **kwargs):
     # and that the file exists and is not a directory! Then we can delete it
     LOG.debug('*** post_delete signal handler called. Deleting file.')
     if instance.file:
-        if (os.path.exists(instance.file.path) and
-                os.path.isfile(instance.file.path)):
-            os.remove(instance.file.path)
+        if temp_storage.exists(instance.file.name):
+            print("deleted")
+            temp_storage.delete(instance.file.name)
 
     if local_settings.DELETE_UPLOAD_TMP_DIRS:
-        file_dir = os.path.join(storage.location, instance.upload_id)
+        file_dir = os.path.join(chunked_storage.location, instance.upload_id)
         if(os.path.exists(file_dir) and os.path.isdir(file_dir)):
             os.rmdir(file_dir)
             LOG.debug('*** post_delete signal handler called. Deleting temp '

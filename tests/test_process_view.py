@@ -110,15 +110,15 @@ class ProcessTestCase(TestCase):
         setattr(drf_filepond_settings, 'UPLOAD_TMP', upload_tmp)
 
     def test_process_invalid_storage_location(self):
-        old_storage = views.storage
-        views.storage = FileSystemStorage(location='/django_test')
+        old_storage = views.chunked_storage
+        views.chunked_storage = FileSystemStorage(location='/django_test')
         (encoded_form, content_type) = self._get_encoded_form('testfile.dat')
 
         req = self.rf.post(reverse('process'),
                       data=encoded_form, content_type=content_type)
         pv = views.ProcessView.as_view()
         response = pv(req)
-        views.storage = old_storage
+        views.chunked_storage = old_storage
         self.assertEqual(response.status_code, 500, 'Expecting 500 error due'
                          ' to invalid storage location.')
         self.assertEqual(
@@ -185,15 +185,15 @@ class ProcessTestCase(TestCase):
                                                 'in request data.'))
 
     def test_store_upload_with_storage_outside_BASE_DIR_without_enable(self):
-        old_storage = views.storage
-        views.storage = FileSystemStorage(location='/tmp/uploads')
+        old_storage = views.chunked_storage
+        views.chunked_storage = FileSystemStorage(location='/tmp/uploads')
         (encoded_form, content_type) = self._get_encoded_form('testfile.dat')
 
         req = self.rf.post(reverse('process'),
                       data=encoded_form, content_type=content_type)
         pv = views.ProcessView.as_view()
         response = pv(req)
-        views.storage = old_storage
+        views.chunked_storage = old_storage
         self.assertEqual(response.status_code, 500, 'Expecting 500 error due'
                          ' to invalid storage location.')
         self.assertEqual(
@@ -203,12 +203,12 @@ class ProcessTestCase(TestCase):
              'incorrectly.'))
 
     def test_store_upload_with_storage_outside_BASE_DIR_with_enable(self):
-        old_storage = views.storage
+        old_storage = views.chunked_storage
         old_UPLOAD_TMP = drf_filepond_settings.UPLOAD_TMP
 
         drf_filepond_settings.ALLOW_EXTERNAL_UPLOAD_DIR = True
 
-        views.storage = FileSystemStorage(location='/tmp/uploads')
+        views.chunked_storage = FileSystemStorage(location='/tmp/uploads')
         drf_filepond_settings.UPLOAD_TMP = '/tmp/uploads'
 
         (encoded_form, content_type) = self._get_encoded_form('testfile.dat')
@@ -217,7 +217,7 @@ class ProcessTestCase(TestCase):
                       data=encoded_form, content_type=content_type)
         pv = views.ProcessView.as_view()
         response = pv(req)
-        views.storage = old_storage
+        views.chunked_storage = old_storage
         drf_filepond_settings.UPLOAD_TMP = old_UPLOAD_TMP
         drf_filepond_settings.ALLOW_EXTERNAL_UPLOAD_DIR = False
         self.assertEqual(response.status_code, 200, 'Expecting upload to be '

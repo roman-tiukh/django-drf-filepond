@@ -32,8 +32,8 @@ class SignalsTestCase(TestCase):
         # Mock a TemporaryUpload instance object
         tu = Mock(spec=TemporaryUpload)
         upload_file = Mock(spec=SimpleUploadedFile)
-        models.storage = Mock(spec=FileSystemStorage)
-        models.storage.location = tmp_dir_split[0]
+        models.chunked_storage = Mock(spec=FileSystemStorage)
+        models.chunked_storage.location = tmp_dir_split[0]
 
         upload_file.path = path
         tu.upload_id = tmp_dir_split[1]

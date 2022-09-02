@@ -16,7 +16,7 @@ from django.core.exceptions import ImproperlyConfigured
 import re
 import shortuuid
 from django_drf_filepond.models import TemporaryUpload, StoredUpload
-from django_drf_filepond.storage_utils import _get_storage_backend
+from django_drf_filepond.s3_move_uploader import S3MoveStorage
 from django_drf_filepond.exceptions import ConfigurationError
 from django_drf_filepond.utils import is_image_for_thumbnail
 from sorl.thumbnail import get_thumbnail
@@ -47,7 +47,7 @@ def _init_storage_backend():
     storage_module_name = getattr(local_settings, 'STORAGES_BACKEND', None)
     LOG.debug('Initialising storage backend with storage module name [%s]'
               % storage_module_name)
-    storage_backend = _get_storage_backend(storage_module_name)
+    storage_backend = S3MoveStorage()
     storage_backend_initialised = True
 
 

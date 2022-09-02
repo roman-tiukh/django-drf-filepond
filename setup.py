@@ -33,6 +33,8 @@ setup(
         "django-storages>=1.9.1;python_version>='3.5'",
         "six>=1.14.0",
         "sorl-thumbnail==12.8.0",
+        "boto3==1.24.20",
+        "botocore==1.27.20",
     ],
     tests_require=[
         "nose",
