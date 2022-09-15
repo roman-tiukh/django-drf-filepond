@@ -3,6 +3,9 @@ from __future__ import unicode_literals
 
 import logging
 import os
+import random
+import string
+from pathlib import Path
 
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
@@ -92,8 +95,18 @@ class DrfFilePondStoredStorage(LazyObject):
             self._wrapped = storage_backend
 
 
+def random_string(length, numbers=True):
+    if numbers:
+        chars = string.digits
+    else:
+        chars = string.ascii_letters + string.digits
+    return ''.join(random.choices(chars, k=length))
+
+
 def get_upload_path(instance, filename):
-    return os.path.join(instance.upload_id, filename)
+    path = str(Path(random_string(3)) / random_string(3) / instance.upload_id / instance.upload_name)
+    print(path)
+    return path
 
 
 class TemporaryUpload(models.Model):
@@ -112,7 +125,7 @@ class TemporaryUpload(models.Model):
     # The unique ID used to store the file itself
     file_id = models.CharField(max_length=22,
                                validators=[MinLengthValidator(22)])
-    file = models.FileField(storage=storage, upload_to=get_upload_path)
+    file = models.FileField(storage=DrfFilePondStoredStorage(), upload_to=get_upload_path)
     upload_name = models.CharField(max_length=512)
     uploaded = models.DateTimeField(auto_now_add=True)
     upload_type = models.CharField(max_length=1,
@@ -168,17 +181,13 @@ class StoredUpload(models.Model):
         return os.path.join(fsp, self.file.name)
 
 
-# When a TemporaryUpload record is deleted, we need to delete the
-# corresponding file from the filesystem by catching the post_delete signal.
+# We are not deleting temporary upload file as we use same file in the StoredUpload
 @receiver(post_delete, sender=TemporaryUpload)
 def delete_temp_upload_file(sender, instance, **kwargs):
     # Check that the file parameter for the instance is not None
     # and that the file exists and is not a directory! Then we can delete it
     LOG.debug('*** post_delete signal handler called. Deleting file.')
-    if instance.file:
-        if (os.path.exists(instance.file.path) and
-                os.path.isfile(instance.file.path)):
-            os.remove(instance.file.path)
+
 
     if local_settings.DELETE_UPLOAD_TMP_DIRS:
         file_dir = os.path.join(storage.location, instance.upload_id)

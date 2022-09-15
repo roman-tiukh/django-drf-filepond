@@ -8,6 +8,7 @@ from rest_framework.response import Response
 
 from django_drf_filepond.models import TemporaryUpload, storage,\
     TemporaryUploadChunked
+from django_drf_filepond.storage_utils import init_storage_backend, storage_backend_initialised
 from io import BytesIO, StringIO
 from django_drf_filepond.utils import _get_user
 from six import text_type, binary_type
@@ -140,6 +141,7 @@ class FilepondStandardFileUploader(FilepondFileUploader):
 
         # We now need to create the temporary upload object and store the
         # file and metadata.
+
         tu = TemporaryUpload(upload_id=upload_id, file_id=file_id,
                              file=file_obj, upload_name=upload_filename,
                              upload_type=TemporaryUpload.FILE_DATA,
@@ -359,6 +361,10 @@ class FilepondChunkedFileUploader(FilepondFileUploader):
         memfile = InMemoryUploadedFile(file_data, None, tuc.file_id,
                                        'application/octet-stream',
                                        tuc.total_size, None)
+        if not storage_backend_initialised:
+            init_storage_backend()
+
+
         tu = TemporaryUpload(upload_id=tuc.upload_id, file_id=tuc.file_id,
                              file=memfile, upload_name=tuc.upload_name,
                              upload_type=TemporaryUpload.FILE_DATA,
