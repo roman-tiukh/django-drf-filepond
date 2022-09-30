@@ -7,7 +7,7 @@ from rest_framework.exceptions import ParseError, MethodNotAllowed
 from rest_framework.response import Response
 
 from django_drf_filepond.models import TemporaryUpload, storage,\
-    TemporaryUploadChunked
+    TemporaryUploadChunked, upload_storage
 from django_drf_filepond.storage_utils import init_storage_backend, storage_backend_initialised
 from io import BytesIO, StringIO
 from django_drf_filepond.utils import _get_user
@@ -147,6 +147,7 @@ class FilepondStandardFileUploader(FilepondFileUploader):
                              upload_type=TemporaryUpload.FILE_DATA,
                              uploaded_by=_get_user(request))
         tu.save()
+        print(f"tu: {tu.file.name}")    
 
         response = Response(upload_id, status=status.HTTP_200_OK,
                             content_type='text/plain')
@@ -223,6 +224,7 @@ class FilepondChunkedFileUploader(FilepondFileUploader):
                                      upload_dir=upload_id, total_size=ulen,
                                      uploaded_by=_get_user(request))
         tuc.save()
+        print(f"tu: {tuc.file.name}")
 
         return Response(upload_id, status=status.HTTP_200_OK,
                         content_type='text/plain')
@@ -270,6 +272,7 @@ class FilepondChunkedFileUploader(FilepondFileUploader):
         except TemporaryUploadChunked.DoesNotExist:
             return Response('Invalid chunk upload request data',
                             status=status.HTTP_400_BAD_REQUEST)
+        
 
         # Now check that the required headers were set
         if (uoffset is None) or (ulength is None) or (uname is None):
@@ -361,15 +364,13 @@ class FilepondChunkedFileUploader(FilepondFileUploader):
         memfile = InMemoryUploadedFile(file_data, None, tuc.file_id,
                                        'application/octet-stream',
                                        tuc.total_size, None)
-        if not storage_backend_initialised:
-            init_storage_backend()
-
 
         tu = TemporaryUpload(upload_id=tuc.upload_id, file_id=tuc.file_id,
                              file=memfile, upload_name=tuc.upload_name,
                              upload_type=TemporaryUpload.FILE_DATA,
                              uploaded_by=tuc.uploaded_by)
         tu.save()
+        print(f"tu: {tu.file.name}")
 
         # Check that the final file is stored and of the correct size
         stored_file_path = os.path.join(chunk_dir, tuc.file_id)
