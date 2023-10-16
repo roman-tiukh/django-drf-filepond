@@ -32,7 +32,7 @@ setup(
         "django-storages==1.9.1;python_version=='2.7'",
         "django-storages>=1.9.1;python_version>='3.5'",
         "six>=1.14.0",
-        "sorl-thumbnail==12.8.0",
+        "sorl-thumbnail==12.9.0",
     ],
     tests_require=[
         "nose",
