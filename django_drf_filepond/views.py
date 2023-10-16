@@ -255,9 +255,9 @@ class LoadView(APIView):
 
         response = HttpResponse(data_bytes, content_type=ct)
         is_download = request.GET.get('is-download', 'false')
-        content_disponsition = 'attachement' if is_download == 'true' else 'inline'
+        content_disposition = 'attachment' if is_download == 'true' else 'inline'
         response['Content-Disposition'] = ('%s; filename="%s"' %
-                                           (content_disponsition, escape_uri_path(filename)))
+                                           (content_disposition, escape_uri_path(filename)))
 
         return response
 
