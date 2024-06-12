@@ -15,14 +15,10 @@ import django_drf_filepond.drf_filepond_settings as local_settings
 from django.core.exceptions import ImproperlyConfigured
 import re
 import shortuuid
-from django_drf_filepond.models import TemporaryUpload, StoredUpload
-from django_drf_filepond.storage_utils import _get_storage_backend
+from django_drf_filepond.models import TemporaryUpload, StoredUpload, upload_storage
 from django_drf_filepond.exceptions import ConfigurationError
-
-# TODO: Need to refactor this into a class and put the initialisation of
-# the storage backend into the init.
-storage_backend_initialised = False
-storage_backend = None
+from django_drf_filepond.utils import is_image_for_thumbnail
+from sorl.thumbnail import get_thumbnail
 
 LOG = logging.getLogger(__name__)
 
@@ -38,16 +34,6 @@ except NameError:
     FileExistsError = OSError
 
 
-def _init_storage_backend():
-    global storage_backend_initialised
-    global storage_backend
-
-    storage_module_name = getattr(local_settings, 'STORAGES_BACKEND', None)
-    LOG.debug('Initialising storage backend with storage module name [%s]'
-              % storage_module_name)
-    storage_backend = _get_storage_backend(storage_module_name)
-    storage_backend_initialised = True
-
 
 # Store the temporary upload represented by upload_id to the specified
 # destination_file_path under the defined file store location as specified by
@@ -57,7 +43,7 @@ def _init_storage_backend():
 # either the 22-char upload_id or the value provided to the
 # destination_file_path parameter as a query string parameter using the
 # "id" key.
-def store_upload(upload_id, destination_file_path):
+def store_upload(upload_id):
     """
     Store the temporary upload with the specified upload ID to the
     destination_file_path. destination_file_path should be a directory only
@@ -71,122 +57,22 @@ def store_upload(upload_id, destination_file_path):
     """
     # TODO: If the storage backend is not initialised, init now - this will
     # be removed when this module is refactored into a class.
-    if not storage_backend_initialised:
-        _init_storage_backend()
-
-    # If there's no storage backend set then we're using local file storage
-    # and FILE_STORE_PATH must be set.
-    if not storage_backend:
-        if ((not hasattr(local_settings, 'FILE_STORE_PATH')) or
-                (not local_settings.FILE_STORE_PATH)):
-            raise ImproperlyConfigured('A required setting is missing in your '
-                                       'application configuration.')
-
+    
     id_fmt = re.compile('^([%s]){22}$' % (shortuuid.get_alphabet()))
     if not id_fmt.match(upload_id):
         LOG.error('The provided upload ID <%s> is of an invalid format.'
                   % upload_id)
         raise ValueError('The provided upload ID is of an invalid format.')
 
-    if not destination_file_path or destination_file_path == '':
-        raise ValueError('No destination file path provided.')
-
     try:
-        tu = TemporaryUpload.objects.get(upload_id=upload_id)
+        temp_upload = TemporaryUpload.objects.get(upload_id=upload_id)
     except TemporaryUpload.DoesNotExist:
         raise ValueError('Record for the specified upload_id doesn\'t exist')
 
-    # Before this was updated, passing a path ending in os.sep, i.e. a
-    # directory name, would ensure that the file was stored in the specified
-    # directory using the name that the file had when it was originally
-    # uploaded.  To ensure consistency with this previous approach to
-    # handling files, we have to ensure here that if the original path ends
-    # in os.sep and we're using local storage, this is maintained when it
-    # is passed to _store_upload_local
-    destination_name = ntpath.basename(destination_file_path)
-    destination_path = ntpath.dirname(destination_file_path)
-
-    if ((not storage_backend) and (destination_name == '') and
-            (destination_file_path.endswith(os.sep))):
-        # In some cases we'll enter this block but destination path will
-        # already end in a '/' so check before updating
-        if not destination_path.endswith('/'):
-            destination_path += os.sep
-
-    if storage_backend:
-        return _store_upload_remote(destination_path, destination_name, tu)
-    else:
-        return _store_upload_local(destination_path, destination_name, tu)
-
-
-def _store_upload_local(destination_file_path, destination_file_name,
-                        temp_upload):
-    file_path_base = local_settings.FILE_STORE_PATH
-
-    # If called via store_upload, this has already been checked but in
-    # case this is called directly, double check that the store path is set
-    if not file_path_base or file_path_base == '':
-        raise ValueError('The FILE_STORE_PATH is not set to a directory.')
-
-    # Is this necessary? Checking on every file storage in case the directory
-    # was removed but not sure that this is really necessary.
-    if((not os.path.exists(file_path_base)) or
-            (not os.path.isdir(file_path_base))):
-        raise FileNotFoundError(
-            'The local output directory [%s] defined by FILE_STORE_PATH is '
-            'missing.' % file_path_base)
-
-    if destination_file_path.startswith(os.sep):
-        destination_file_path = destination_file_path[1:]
-
-    target_dir = os.path.join(file_path_base, destination_file_path)
-    target_filename = destination_file_name
-    # If not filename provided, assume a directory was provided, get the
-    # file name from temp_upload and use this
-    if not target_filename:
-        target_filename = temp_upload.upload_name
-    destination_file_path = os.path.join(destination_file_path,
-                                         target_filename)
-
-    # Check we're not about to overwrite anything
-    target_file_path = os.path.join(target_dir, target_filename)
-    if os.path.exists(target_file_path):
-        LOG.error('File with specified name and path <%s> already exists'
-                  % target_file_path)
-        raise FileExistsError('The specified temporary file cannot be stored'
-                              ' to the specified location - file exists.')
-
-    su = StoredUpload(upload_id=temp_upload.upload_id,
-                      file=destination_file_path,
-                      uploaded=temp_upload.uploaded,
-                      uploaded_by=temp_upload.uploaded_by)
-
-    try:
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir)
-        shutil.copy2(temp_upload.get_file_path(), target_file_path)
-        su.save()
-        temp_upload.delete()
-    except IOError as e:
-        LOG.error('Error moving temporary file to permanent storage location')
-        raise e
-
-    return su
-
-
-def _store_upload_remote(destination_file_path, destination_file_name,
-                         temp_upload):
-    # Use the storage backend to write the file to the storage backend
-    target_filename = destination_file_name
-    if not target_filename:
-        target_filename = temp_upload.upload_name
-
     su = None
-    destination_file = os.path.join(destination_file_path, target_filename)
     try:
-        storage_backend.save(destination_file, temp_upload.file)
         su = StoredUpload(upload_id=temp_upload.upload_id,
-                          file=destination_file,
+                          file=temp_upload.file.name,
                           uploaded=temp_upload.uploaded,
                           uploaded_by=temp_upload.uploaded_by)
         su.save()
@@ -247,7 +133,7 @@ def get_stored_upload(upload_id):
     return su
 
 
-def get_stored_upload_file_data(stored_upload):
+def get_stored_upload_file_data(stored_upload, thumbnail_type):
     """
     Given a StoredUpload object, this function gets and returns the data of
     the file associated with the StoredUpload instance.
@@ -261,54 +147,31 @@ def get_stored_upload_file_data(stored_upload):
         filename is a string containing the name of the stored file
         data_bytes_io is a file-like BytesIO object containing the file data
     """
-    # TODO: If the storage backend is not initialised, init now - this
-    # will be removed when this module is refactored into a class.
-    if not storage_backend_initialised:
-        _init_storage_backend()
-    if storage_backend:
-        LOG.debug('get_stored_upload_file_data: Using a remote storage '
-                  'service: [%s]' % (type(storage_backend).__name__))
-
-        file_path_base = ''
-    else:
-        LOG.debug('get_stored_upload_file_data: Using local storage backend.')
-        if ((not hasattr(local_settings, 'FILE_STORE_PATH')) or
-                (not local_settings.FILE_STORE_PATH) or
-                (not os.path.exists(local_settings.FILE_STORE_PATH)) or
-                (not os.path.isdir(local_settings.FILE_STORE_PATH))):
-            raise ConfigurationError('The file upload settings are not '
-                                     'configured correctly.')
-
-        file_path_base = local_settings.FILE_STORE_PATH
-        #  This code is redundant, this case will be picked up by the
-        #  not local_settings.FILE_STORE_PATH in the above statement.
-        #   if not file_path_base:
-        #       file_path_base = ''
-
     # See if the stored file with the path specified in su exists
     # in the file store location
-    file_path = os.path.join(file_path_base, stored_upload.file.name)
-    if storage_backend:
-        if not storage_backend.exists(file_path):
-            LOG.error('File [%s] for upload_id [%s] not found on remote '
-                      'file store' % (file_path, stored_upload.upload_id))
-            raise FileNotFoundError(
-                'File [%s] for upload_id [%s] not found on remote file '
-                'store.' % (file_path, stored_upload.upload_id))
-        file_data = stored_upload.file.read()
-    else:
-        if ((not os.path.exists(file_path)) or
-                (not os.path.isfile(file_path))):
-            LOG.error('File [%s] for upload_id [%s] not found on local disk'
-                      % (file_path, stored_upload.upload_id))
-            raise FileNotFoundError('File [%s] not found on local disk'
-                                    % file_path)
-
-        # We now know that the file exists locally and is not a directory
-        file_data = stored_upload.file.read()
+    file_path = stored_upload.file.name
+    
+    if not upload_storage.exists(file_path):
+        LOG.error('File [%s] for upload_id [%s] not found on remote '
+                    'file store' % (file_path, stored_upload.upload_id))
+        raise FileNotFoundError(
+            'File [%s] for upload_id [%s] not found on remote file '
+            'store.' % (file_path, stored_upload.upload_id))
 
     filename = os.path.basename(stored_upload.file.name)
-    return (filename, file_data)
+    if is_image_for_thumbnail(filename) and thumbnail_type and local_settings.THUMBNAIL_SIZES:
+        thumbnail_config = local_settings.THUMBNAIL_SIZES.get(thumbnail_type, None)
+        if not thumbnail_config:
+            LOG.error(f'Unknown thumbnail size type [{thumbnail_type}] - falling back to default. ' +
+                'Set thumbnail config via DJANGO_DRF_FILEPOND_THUMBNAIL_SIZES setting key.')
+            thumbnail_config = '300x300'
+        thumbnailed_solr = get_thumbnail(stored_upload.file, thumbnail_config)
+        if not thumbnailed_solr.exists():
+            LOG.error(f'Failed to produce a thumbnail [{thumbnail_type}] with config [{thumbnail_config}].')
+            # returning empty file so on UI it will appear with download button
+            return (filename, stored_upload.file.read())
+        return (filename, thumbnailed_solr.read())
+    return (filename, stored_upload.file.read())
 
 
 def delete_stored_upload(upload_id, delete_file=False):
@@ -335,54 +198,13 @@ def delete_stored_upload(upload_id, delete_file=False):
     if not delete_file:
         return True
 
-    # If we got the stored file record and delete_file is True, make sure
-    # that the storage backend is set up and we have access to it.
-    # TODO: If the storage backend is not initialised, init now - this
-    # will be removed when this module is refactored into a class.
-    if not storage_backend_initialised:
-        _init_storage_backend()
-
-    if storage_backend:
-        LOG.debug('delete_stored_upload: Using a remote storage '
-                  'service: [%s]' % (type(storage_backend).__name__))
-        file_path_base = ''
-    else:
-        LOG.debug('delete_stored_upload: Using local storage backend.')
-        if ((not hasattr(local_settings, 'FILE_STORE_PATH')) or
-                (not local_settings.FILE_STORE_PATH) or
-                (not os.path.exists(local_settings.FILE_STORE_PATH)) or
-                (not os.path.isdir(local_settings.FILE_STORE_PATH))):
-            raise ConfigurationError('The file upload settings are not '
-                                     'configured correctly.')
-
-        file_path_base = local_settings.FILE_STORE_PATH
-
-    file_path = os.path.join(file_path_base, su.file.name)
-    if storage_backend:
-        if not storage_backend.exists(file_path):
-            LOG.error('Stored upload file [%s] with upload_id [%s] is not '
-                      'found on remote file store' % (file_path, upload_id))
-            raise FileNotFoundError(
-                'File [%s] for stored upload with id [%s] not found on remote'
-                ' file store.' % (file_path, upload_id))
-        storage_backend.delete(file_path)
-    # Else delete local file
-    else:
-        if ((not os.path.exists(file_path)) or
-                (not os.path.isfile(file_path))):
-            LOG.error('File [%s] for stored upload [%s] not found on '
-                      'local disk' % (file_path, upload_id))
-            raise FileNotFoundError('File [%s] to delete was not found on '
-                                    'the local disk' % file_path)
-
-        # We now know that the file exists locally and is not a directory
-        try:
-            os.remove(file_path)
-        except OSError as e:
-            LOG.error('Error removing requested file: %s' % str(e))
-            raise e
-
-        # TODO: Need to look at how best to delete directories that may have
-        # been created to store the file. For now, we just delete the file.
+    file_path = su.file.name
+    if not upload_storage.exists(file_path):
+        LOG.error('Stored upload file [%s] with upload_id [%s] is not '
+                    'found on remote file store' % (file_path, upload_id))
+        raise FileNotFoundError(
+            'File [%s] for stored upload with id [%s] not found on remote'
+            ' file store.' % (file_path, upload_id))
+    upload_storage.delete(file_path)
 
     return True

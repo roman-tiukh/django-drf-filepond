@@ -31,7 +31,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_drf_filepond.uploaders import FilepondFileUploader
 from django_drf_filepond.utils import _get_file_id, _get_user,\
-    get_local_settings_base_dir
+    get_local_settings_base_dir, is_image_for_thumbnail
 from django.utils.encoding import escape_uri_path
 
 LOG = logging.getLogger(__name__)
@@ -238,9 +238,10 @@ class LoadView(APIView):
                       % (upload_id, str(e)))
             return Response('Not found', status=status.HTTP_404_NOT_FOUND)
 
+        thumbnail_type = request.GET.get('thumbnail', None) if is_image_for_thumbnail(su.file.name) else None
         # su is now the StoredUpload record for the requested file
         try:
-            (filename, data_bytes) = get_stored_upload_file_data(su)
+            (filename, data_bytes) = get_stored_upload_file_data(su, thumbnail_type)
         except ConfigurationError as e:
             LOG.error('Error getting file upload: [%s]' % str(e))
             return HttpResponseServerError('The file upload settings are '
@@ -253,8 +254,10 @@ class LoadView(APIView):
         ct = _get_content_type(filename)
 
         response = HttpResponse(data_bytes, content_type=ct)
-        response['Content-Disposition'] = ('inline; filename="%s"' %
-                                           escape_uri_path(filename))
+        is_download = request.GET.get('is-download', 'false')
+        content_disponsition = 'attachement' if is_download == 'true' else 'inline'
+        response['Content-Disposition'] = ('%s; filename="%s"' %
+                                           (content_disponsition, escape_uri_path(filename)))
 
         return response
 
