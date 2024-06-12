@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.exceptions import ParseError, MethodNotAllowed
 from rest_framework.response import Response
 
-from django_drf_filepond.models import TemporaryUpload, storage,\
+from django_drf_filepond.models import TemporaryUpload, chunked_storage,\
     TemporaryUploadChunked
 from io import BytesIO, StringIO
 from django_drf_filepond.utils import _get_user
@@ -195,7 +195,7 @@ class FilepondChunkedFileUploader(FilepondFileUploader):
         # exists and that we're not being made to try and store something
         # outside the base storage location. Then create the new
         # temporary directory into which chunks will be stored
-        base_loc = storage.base_location
+        base_loc = chunked_storage.base_location
         chunk_dir = os.path.abspath(os.path.join(base_loc, upload_id))
         if not chunk_dir.startswith(base_loc):
             return Response('Unable to create storage for upload data.',
@@ -306,14 +306,14 @@ class FilepondChunkedFileUploader(FilepondFileUploader):
                   % (file_data_len))
 
         # Store the chunk and check if we've now completed the upload
-        upload_dir = os.path.join(storage.base_location, tuc.upload_dir)
+        upload_dir = os.path.join(chunked_storage.base_location, tuc.upload_dir)
         upload_file = os.path.join(tuc.upload_dir,
                                    '%s_%s' % (tuc.file_id, tuc.last_chunk+1))
         if not os.path.exists(upload_dir):
             return Response('Chunk storage location error',
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        storage.save(upload_file, fd)
+        chunked_storage.save(upload_file, fd)
         # Set the updated chunk number and the new offset
         tuc.last_chunk = tuc.last_chunk + 1
         tuc.offset = tuc.offset + file_data_len
@@ -343,7 +343,7 @@ class FilepondChunkedFileUploader(FilepondFileUploader):
 
         # Load each of the file parts into a BytesIO object and store them
         # via a TemporaryUpload object.
-        chunk_dir = os.path.join(storage.base_location, tuc.upload_dir)
+        chunk_dir = os.path.join(chunked_storage.base_location, tuc.upload_dir)
         file_data = BytesIO()
         for i in range(1, tuc.last_chunk+1):
             chunk_file = os.path.join(chunk_dir, '%s_%s' % (tuc.file_id, i))
@@ -393,7 +393,7 @@ class FilepondChunkedFileUploader(FilepondFileUploader):
                             content_type='text/plain')
 
         # Check that the directory for the chunks exists
-        if not os.path.exists(os.path.join(storage.base_location,
+        if not os.path.exists(os.path.join(chunked_storage.base_location,
                                            tuc.upload_dir)):
             return Response('Invalid upload location, can\'t continue upload.',
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

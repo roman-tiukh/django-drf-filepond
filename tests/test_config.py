@@ -30,7 +30,7 @@ class AppSettingsTestCase(TestCase):
     def test_default_upload_config(self):
         reload_module(local_settings)
         from django_drf_filepond import models
-        upload_tmp = models.storage.location
+        upload_tmp = models.chunked_storage.location
         LOG.debug('We have a settings value of: %s' % (upload_tmp))
         self.assertEqual(upload_tmp,
                          os.path.join(local_settings.BASE_DIR,

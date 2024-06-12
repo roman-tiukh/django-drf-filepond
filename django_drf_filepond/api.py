@@ -16,8 +16,10 @@ from django.core.exceptions import ImproperlyConfigured
 import re
 import shortuuid
 from django_drf_filepond.models import TemporaryUpload, StoredUpload
-from django_drf_filepond.storage_utils import _get_storage_backend
+from django_drf_filepond.s3_move_uploader import S3MoveStorage
 from django_drf_filepond.exceptions import ConfigurationError
+from django_drf_filepond.utils import is_image_for_thumbnail
+from sorl.thumbnail import get_thumbnail
 
 # TODO: Need to refactor this into a class and put the initialisation of
 # the storage backend into the init.
@@ -45,7 +47,7 @@ def _init_storage_backend():
     storage_module_name = getattr(local_settings, 'STORAGES_BACKEND', None)
     LOG.debug('Initialising storage backend with storage module name [%s]'
               % storage_module_name)
-    storage_backend = _get_storage_backend(storage_module_name)
+    storage_backend = S3MoveStorage()
     storage_backend_initialised = True
 
 
@@ -160,7 +162,6 @@ def _store_upload_local(destination_file_path, destination_file_name,
                       file=destination_file_path,
                       uploaded=temp_upload.uploaded,
                       uploaded_by=temp_upload.uploaded_by)
-
     try:
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
@@ -247,7 +248,7 @@ def get_stored_upload(upload_id):
     return su
 
 
-def get_stored_upload_file_data(stored_upload):
+def get_stored_upload_file_data(stored_upload, thumbnail_type):
     """
     Given a StoredUpload object, this function gets and returns the data of
     the file associated with the StoredUpload instance.
@@ -295,7 +296,6 @@ def get_stored_upload_file_data(stored_upload):
             raise FileNotFoundError(
                 'File [%s] for upload_id [%s] not found on remote file '
                 'store.' % (file_path, stored_upload.upload_id))
-        file_data = stored_upload.file.read()
     else:
         if ((not os.path.exists(file_path)) or
                 (not os.path.isfile(file_path))):
@@ -305,10 +305,21 @@ def get_stored_upload_file_data(stored_upload):
                                     % file_path)
 
         # We now know that the file exists locally and is not a directory
-        file_data = stored_upload.file.read()
 
     filename = os.path.basename(stored_upload.file.name)
-    return (filename, file_data)
+    if is_image_for_thumbnail(filename) and thumbnail_type and local_settings.THUMBNAIL_SIZES:
+        thumbnail_config = local_settings.THUMBNAIL_SIZES.get(thumbnail_type, None)
+        if not thumbnail_config:
+            LOG.error(f'Unknown thumbnail size type [{thumbnail_type}] - falling back to default. ' +
+                'Set thumbnail config via DJANGO_DRF_FILEPOND_THUMBNAIL_SIZES setting key.')
+            thumbnail_config = '300x300'
+        thumbnailed_solr = get_thumbnail(stored_upload.file, thumbnail_config)
+        if not thumbnailed_solr.exists():
+            LOG.error(f'Failed to produce a thumbnail [{thumbnail_type}] with config [{thumbnail_config}].')
+            # returning empty file so on UI it will appear with download button
+            return (filename, stored_upload.file.read())
+        return (filename, thumbnailed_solr.read())
+    return (filename, stored_upload.file.read())
 
 
 def delete_stored_upload(upload_id, delete_file=False):

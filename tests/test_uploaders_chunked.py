@@ -9,7 +9,7 @@ from django_drf_filepond.renderers import PlainTextRenderer
 from django_drf_filepond.utils import _get_file_id
 from rest_framework.request import Request
 
-from django_drf_filepond.uploaders import FilepondChunkedFileUploader, storage
+from django_drf_filepond.uploaders import FilepondChunkedFileUploader, chunked_storage
 import django_drf_filepond
 from six import ensure_text, ensure_binary
 
@@ -532,7 +532,7 @@ class UploadersFileChunkedTestCase(TestCase):
         tuc = self._setup_tuc(True)
         tuc.last_chunk = 3
         tuc.save()
-        chunk_base = os.path.join(storage.base_location, tuc.upload_dir,
+        chunk_base = os.path.join(chunked_storage.base_location, tuc.upload_dir,
                                   '%s_' % (tuc.file_id))
 
         def mock_path_exists_se(chunk_file):
@@ -564,7 +564,7 @@ class UploadersFileChunkedTestCase(TestCase):
 
         tuc.save = MagicMock()
 
-        chunk_base = os.path.join(storage.base_location, tuc.upload_dir,
+        chunk_base = os.path.join(chunked_storage.base_location, tuc.upload_dir,
                                   tuc.file_id)
 
         def mock_path_exists_se(chunk_file):
@@ -599,7 +599,7 @@ class UploadersFileChunkedTestCase(TestCase):
         tuc.save = MagicMock()
         tuc.delete = MagicMock()
 
-        chunk_base = os.path.join(storage.base_location, tuc.upload_dir,
+        chunk_base = os.path.join(chunked_storage.base_location, tuc.upload_dir,
                                   tuc.file_id)
 
         def mock_path_exists_se(chunk_file):
@@ -637,7 +637,7 @@ class UploadersFileChunkedTestCase(TestCase):
         tuc.save = MagicMock()
         tuc.delete = MagicMock()
 
-        chunk_base = os.path.join(storage.base_location, tuc.upload_dir,
+        chunk_base = os.path.join(chunked_storage.base_location, tuc.upload_dir,
                                   tuc.file_id)
 
         def mock_path_exists_se(chunk_file):

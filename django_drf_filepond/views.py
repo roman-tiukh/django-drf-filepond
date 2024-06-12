@@ -19,7 +19,7 @@ from django.http.response import HttpResponse, HttpResponseNotFound, \
 from django_drf_filepond.api import get_stored_upload, \
     get_stored_upload_file_data
 from django_drf_filepond.exceptions import ConfigurationError
-from django_drf_filepond.models import TemporaryUpload, storage, StoredUpload
+from django_drf_filepond.models import TemporaryUpload, chunked_storage, StoredUpload
 from django_drf_filepond.parsers import PlainTextParser, UploadChunkParser
 from django_drf_filepond.renderers import PlainTextRenderer
 from io import BytesIO
@@ -31,7 +31,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_drf_filepond.uploaders import FilepondFileUploader
 from django_drf_filepond.utils import _get_file_id, _get_user,\
-    get_local_settings_base_dir
+    get_local_settings_base_dir, is_image_for_thumbnail
 from django.utils.encoding import escape_uri_path
 
 LOG = logging.getLogger(__name__)
@@ -107,9 +107,9 @@ class ProcessView(APIView):
         # parameter that can be disabled to turn off this check if the
         # developer wishes?
         LOCAL_BASE_DIR = get_local_settings_base_dir()
-        if ((not (storage.location).startswith(LOCAL_BASE_DIR)) and
+        if ((not (chunked_storage.location).startswith(LOCAL_BASE_DIR)) and
                 (LOCAL_BASE_DIR !=
-                 os.path.dirname(django_drf_filepond.__file__))):
+                os.path.dirname(django_drf_filepond.__file__))):
             if not local_settings.ALLOW_EXTERNAL_UPLOAD_DIR:
                 return Response('The file upload path settings are not '
                                 'configured correctly.',
@@ -118,7 +118,7 @@ class ProcessView(APIView):
         # Check that a relative path is not being used to store the
         # upload outside the specified UPLOAD_TMP directory.
         if not getattr(local_settings, 'UPLOAD_TMP').startswith(
-                os.path.abspath(storage.location)):
+                os.path.abspath(chunked_storage.location)):
             return Response('An invalid storage location has been '
                             'specified.',
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -132,6 +132,7 @@ class ProcessView(APIView):
             uploader = FilepondFileUploader.get_uploader(request)
             response = uploader.handle_upload(request, file_id, upload_id)
         except ParseError as e:
+            print(e)
             # Re-raise the ParseError to trigger a 400 response via DRF.
             raise e
 
@@ -238,9 +239,10 @@ class LoadView(APIView):
                       % (upload_id, str(e)))
             return Response('Not found', status=status.HTTP_404_NOT_FOUND)
 
+        thumbnail_type = request.GET.get('thumbnail', None) if is_image_for_thumbnail(su.file.name) else None
         # su is now the StoredUpload record for the requested file
         try:
-            (filename, data_bytes) = get_stored_upload_file_data(su)
+            (filename, data_bytes) = get_stored_upload_file_data(su, thumbnail_type)
         except ConfigurationError as e:
             LOG.error('Error getting file upload: [%s]' % str(e))
             return HttpResponseServerError('The file upload settings are '
@@ -253,8 +255,10 @@ class LoadView(APIView):
         ct = _get_content_type(filename)
 
         response = HttpResponse(data_bytes, content_type=ct)
-        response['Content-Disposition'] = ('inline; filename="%s"' %
-                                           escape_uri_path(filename))
+        is_download = request.GET.get('is-download', 'false')
+        content_disponsition = 'attachement' if is_download == 'true' else 'inline'
+        response['Content-Disposition'] = ('%s; filename="%s"' %
+                                           (content_disponsition, escape_uri_path(filename)))
 
         return response
 
